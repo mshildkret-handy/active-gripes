@@ -8,6 +8,7 @@ MyProblems::With::ActiveRecord
 * Use of transactions with `find_or_create_by`
 * Racing to `find_or_create` records!
 * PSA: `save!` vs. `save`
+* Migrations and Caching
 
 
 **NB: All lessons learned the hard way.**
@@ -179,3 +180,19 @@ foo.reload # Raises Error!
 ### When `save` attacks!
 
 The gripe here is it seems to violate the law of least suprise. The way people explain `save` vs `save!` is that one returns `false` and the other raises. In truth they both can raise an error, its just one will raise due to issues on the ruby object or DB, where the other will just raise on DB issues.
+
+### Migrations and Caching
+ActiveRecord caches table columns, and uses this cache to build INSERT statements. Even if the code is not touching that column, ActiveRecord will still attempt to set it to NULL when saving models. The cache will stay until a hard restart of rails occurs, or some equivalent. 
+
+Therefore, assuming zero downtime during a migration deploy, there is a window where Rails believes that column is still there and will error out on any INSERT (or create in ruby) until Rails is restarted. With a rolling deploy process, this period of time in between is inescapable.
+
+One way to ensure 100% uptime with no errors is to add some code to the model to force ActiveRecord to ignore the column. Let's say you have a table/model called users/User and a column you wish to remove called "useless". Assuming all references have already been deleted, add this code before doing the migration:
+
+```ruby
+class User
+  def self.columns
+    super.reject { |c| c.name == "useless" }
+  end
+end
+```
+While annoying to have to add this code, and then delete it after the deploy, it is probably the only way of ensuring 100% uptime with no errors. 
